@@ -48,6 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Minimum object score to keep (default: 0.5).")
     p.add_argument("--mask-thresh", type=float, default=0.5,
                    help="Mask binarization threshold (default: 0.5).")
+    p.add_argument("--batch", type=int, default=1,
+                   help="Frames per model pass (default 1). Higher = more GPU "
+                        "utilization/VRAM and faster on GPU. Try 8-16 on a 15GB GPU.")
     p.add_argument("--fp16", action="store_true",
                    help="Load model in half precision (CUDA only) to save VRAM.")
     p.add_argument("--image-size", type=int, default=None,
@@ -90,6 +93,7 @@ def main(argv=None) -> int:
             frame_stride=args.frame_stride,
             fp16=args.fp16,
             image_size=args.image_size,
+            batch=args.batch,
         )
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)

@@ -23,14 +23,16 @@ call venv\Scripts\activate.bat
 python -m pip install --upgrade pip
 
 echo [2/4] Installing PyTorch...
-REM Detect NVIDIA GPU via nvidia-smi.
+REM Detect NVIDIA GPU via nvidia-smi. On Windows the default PyPI torch wheels
+REM are CUDA-enabled, so we use the default index for GPU (the old cu121 index
+REM lacks wheels for newer Python versions). CPU-only machines get the cpu index.
 where nvidia-smi >nul 2>&1
 if errorlevel 1 (
     echo   No NVIDIA GPU detected -^> installing CPU torch.
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ) else (
-    echo   NVIDIA GPU detected -^> installing CUDA 12.1 torch.
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    echo   NVIDIA GPU detected -^> installing default torch (CUDA-enabled).
+    pip install torch torchvision
 )
 if errorlevel 1 goto :error
 

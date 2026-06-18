@@ -149,6 +149,39 @@ class Sam3ConceptSegmenter:
 
         return _dedupe(detections)
 
+    def segment_frames(self, frames_rgb: list[np.ndarray]) -> list[list[dict]]:
+        """Segment a *batch* of frames in one model pass per concept phrase.
+
+        Much higher GPU utilisation than segment_frame (which does one frame at
+        a time). Returns one detection list per input frame, in order.
+        """
+        from PIL import Image
+
+        if not frames_rgb:
+            return []
+
+        pil = [Image.fromarray(f) for f in frames_rgb]
+        per_image: list[list[dict]] = [[] for _ in pil]
+
+        for phrase, group in self.prompts:
+            inputs = self.processor(
+                images=pil, text=[phrase] * len(pil), return_tensors="pt"
+            ).to(self.device)
+            if "pixel_values" in inputs:
+                inputs["pixel_values"] = self._cast_pixels(inputs["pixel_values"])
+            with self.torch.no_grad():
+                outputs = self.model(**inputs)
+            results = self.processor.post_process_instance_segmentation(
+                outputs,
+                threshold=self.score_thresh,
+                mask_threshold=self.mask_thresh,
+                target_sizes=inputs.get("original_sizes").tolist(),
+            )
+            for i, r in enumerate(results):
+                per_image[i].extend(self._to_detections(r, group))
+
+        return [_dedupe(dets) for dets in per_image]
+
     def _cast_pixels(self, pixel_values):
         """Cast pixel_values to the model dtype (e.g. fp16) without touching
         integer tensors like input_ids."""

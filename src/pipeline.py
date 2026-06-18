@@ -50,6 +50,7 @@ def run(
     frame_stride: int = 1,
     fp16: bool = False,
     image_size: int | None = None,
+    batch: int = 1,
 ) -> str:
     """Process a video and write an annotated copy to output_path."""
     concepts = concepts or DEFAULT_CONCEPTS
@@ -81,25 +82,46 @@ def run(
         device=device, fp16=fp16, image_size=image_size,
     )
 
+    batch = max(1, batch)
     n_expected = max_frames or (total // frame_stride if total else None)
     pbar = tqdm(total=n_expected, desc="Segmenting", unit="frame")
     frame_idx = processed = 0
+
+    def flush(batch_bgr: list) -> bool:
+        """Segment + write one batch. Returns False if max_frames is reached."""
+        nonlocal processed
+        if not batch_bgr:
+            return True
+        rgb = [cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in batch_bgr]
+        results = seg.segment_frames(rgb)
+        for frame_bgr, dets in zip(batch_bgr, results):
+            annotated = draw_detections(frame_bgr, dets)
+            annotated = draw_legend(annotated, _counts(dets), colors)
+            writer.write(annotated)
+            processed += 1
+            pbar.update(1)
+            if max_frames and processed >= max_frames:
+                return False
+        return True
+
+    pending: list = []
+    stopped = False
     try:
         while True:
             ok, frame_bgr = cap.read()
             if not ok:
                 break
             if frame_idx % frame_stride == 0:
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                dets = seg.segment_frame(frame_rgb)
-                annotated = draw_detections(frame_bgr, dets)
-                annotated = draw_legend(annotated, _counts(dets), colors)
-                writer.write(annotated)
-                processed += 1
-                pbar.update(1)
-                if max_frames and processed >= max_frames:
-                    break
+                pending.append(frame_bgr)
+                if len(pending) >= batch:
+                    keep_going = flush(pending)
+                    pending = []
+                    if not keep_going:   # hit max_frames
+                        stopped = True
+                        break
             frame_idx += 1
+        if not stopped:
+            flush(pending)   # leftover frames after the video ended
     finally:
         pbar.close()
         cap.release()
