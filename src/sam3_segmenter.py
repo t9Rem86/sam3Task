@@ -80,12 +80,12 @@ class Sam3ConceptSegmenter:
         self.concept_keys = concept_keys
 
         logger.info(f"Loading SAM 3 ('{checkpoint}') on device='{self.device}'...")
-        # device_map="auto" places weights on GPU when available; otherwise load
-        # normally and move to the chosen device.
-        if self.device == "cuda":
-            self.model = Sam3Model.from_pretrained(checkpoint, device_map="auto")
-        else:
-            self.model = Sam3Model.from_pretrained(checkpoint).to(self.device)
+        # Load all weights normally, then move to the target device.
+        # We deliberately avoid device_map="auto": with accelerate it can leave
+        # some buffers on the "meta" device, which later crashes with
+        # "Tensor.item() cannot be called on meta tensors". Loading in fp32 also
+        # keeps input/weight dtypes consistent (no fp16 input-casting needed).
+        self.model = Sam3Model.from_pretrained(checkpoint).to(self.device)
         self.model.eval()
         self.processor = Sam3Processor.from_pretrained(checkpoint)
 
