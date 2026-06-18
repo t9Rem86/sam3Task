@@ -1,0 +1,23 @@
+# ── SAM 3 via HuggingFace Transformers ────────────────────────────────────
+# SAM 3 (Sam3Model / Sam3Processor) landed in transformers v5.12.0.
+# Until that release is on PyPI for you, install from source (see setup.sh):
+#   pip install git+https://github.com/huggingface/transformers.git
+transformers>=5.12.0
+accelerate>=0.30.0          # for device_map="auto"
+
+# torch / torchvision are installed in setup.sh (CUDA index URL depends on your
+# hardware), so they are intentionally left out of this file.
+
+# ── YouTube download ──────────────────────────────────────────────────────
+yt-dlp>=2024.1.0
+
+# ── Video / image processing ──────────────────────────────────────────────
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# ── Model download / auth ─────────────────────────────────────────────────
+huggingface-hub>=0.23.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+tqdm>=4.65.0

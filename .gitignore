@@ -1,0 +1,11 @@
+venv/
+third_party/
+models/
+__pycache__/
+*.pyc
+*.mp4
+!examples/*.mp4
+output*.mp4
+*.part
+*.webm
+.DS_Store
