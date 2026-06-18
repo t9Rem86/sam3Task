@@ -69,6 +69,8 @@ class Sam3ConceptSegmenter:
         mask_thresh: float = 0.5,
         device: str = "auto",
         checkpoint: str = SAM3_CHECKPOINT,
+        fp16: bool = False,
+        image_size: int | None = None,
     ):
         import torch
         from transformers import Sam3Model, Sam3Processor
@@ -79,15 +81,39 @@ class Sam3ConceptSegmenter:
         self.mask_thresh = mask_thresh
         self.concept_keys = concept_keys
 
-        logger.info(f"Loading SAM 3 ('{checkpoint}') on device='{self.device}'...")
-        # Load all weights normally, then move to the target device.
-        # We deliberately avoid device_map="auto": with accelerate it can leave
-        # some buffers on the "meta" device, which later crashes with
-        # "Tensor.item() cannot be called on meta tensors". Loading in fp32 also
-        # keeps input/weight dtypes consistent (no fp16 input-casting needed).
-        self.model = Sam3Model.from_pretrained(checkpoint).to(self.device)
+        # fp16 only makes sense on CUDA; it ~halves the VRAM footprint.
+        self.dtype = torch.float16 if (fp16 and self.device == "cuda") else torch.float32
+
+        logger.info(
+            f"Loading SAM 3 ('{checkpoint}') on device='{self.device}', "
+            f"dtype={self.dtype}, image_size={image_size or 'default(1008)'}..."
+        )
+
+        # Optionally shrink the working resolution to fit small GPUs (the model
+        # is meant for 1008px; lower = less VRAM but lower accuracy).
+        model_kwargs = {}
+        proc_kwargs = {}
+        if image_size:
+            from transformers import Sam3Config
+            config = Sam3Config.from_pretrained(checkpoint)
+            config.image_size = image_size
+            model_kwargs["config"] = config
+            proc_kwargs["size"] = {"height": image_size, "width": image_size}
+
+        # Load weights normally then .to(device). We avoid device_map="auto"
+        # because accelerate can leave buffers on the "meta" device, crashing
+        # with "Tensor.item() cannot be called on meta tensors".
+        try:
+            self.model = Sam3Model.from_pretrained(
+                checkpoint, dtype=self.dtype, **model_kwargs
+            )
+        except TypeError:  # older transformers used torch_dtype
+            self.model = Sam3Model.from_pretrained(
+                checkpoint, torch_dtype=self.dtype, **model_kwargs
+            )
+        self.model = self.model.to(self.device)
         self.model.eval()
-        self.processor = Sam3Processor.from_pretrained(checkpoint)
+        self.processor = Sam3Processor.from_pretrained(checkpoint, **proc_kwargs)
 
         # All concept phrases flattened, each tagged with its group.
         self.prompts: list[tuple[str, dict]] = [
@@ -111,7 +137,7 @@ class Sam3ConceptSegmenter:
         try:
             with self.torch.no_grad():
                 vision_embeds = self.model.get_vision_features(
-                    pixel_values=img_inputs.pixel_values
+                    pixel_values=self._cast_pixels(img_inputs.pixel_values)
                 )
         except Exception as e:  # fall back to full forward per prompt
             logger.debug(f"get_vision_features unavailable ({e}); using full forward.")
@@ -123,6 +149,13 @@ class Sam3ConceptSegmenter:
 
         return _dedupe(detections)
 
+    def _cast_pixels(self, pixel_values):
+        """Cast pixel_values to the model dtype (e.g. fp16) without touching
+        integer tensors like input_ids."""
+        if pixel_values is not None and pixel_values.dtype != self.dtype:
+            return pixel_values.to(self.dtype)
+        return pixel_values
+
     def _run_prompt(self, phrase, image, vision_embeds, target_sizes) -> dict:
         with self.torch.no_grad():
             if vision_embeds is not None:
@@ -132,6 +165,8 @@ class Sam3ConceptSegmenter:
                 inputs = self.processor(
                     images=image, text=phrase, return_tensors="pt"
                 ).to(self.device)
+                if "pixel_values" in inputs:
+                    inputs["pixel_values"] = self._cast_pixels(inputs["pixel_values"])
                 outputs = self.model(**inputs)
 
         return self.processor.post_process_instance_segmentation(

@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Minimum object score to keep (default: 0.5).")
     p.add_argument("--mask-thresh", type=float, default=0.5,
                    help="Mask binarization threshold (default: 0.5).")
+    p.add_argument("--fp16", action="store_true",
+                   help="Load model in half precision (CUDA only) to save VRAM.")
+    p.add_argument("--image-size", type=int, default=None,
+                   help="Working resolution, e.g. 560 (default 1008). "
+                        "Lower = less VRAM but lower accuracy. Helps small GPUs.")
     p.add_argument("--max-frames", type=int, default=None,
                    help="Process at most N frames (useful for quick tests).")
     p.add_argument("--frame-stride", type=int, default=1,
@@ -83,6 +88,8 @@ def main(argv=None) -> int:
             mask_thresh=args.mask_thresh,
             max_frames=args.max_frames,
             frame_stride=args.frame_stride,
+            fp16=args.fp16,
+            image_size=args.image_size,
         )
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)

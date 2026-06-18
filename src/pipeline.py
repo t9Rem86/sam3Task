@@ -48,6 +48,8 @@ def run(
     mask_thresh: float = 0.5,
     max_frames: int | None = None,
     frame_stride: int = 1,
+    fp16: bool = False,
+    image_size: int | None = None,
 ) -> str:
     """Process a video and write an annotated copy to output_path."""
     concepts = concepts or DEFAULT_CONCEPTS
@@ -75,7 +77,8 @@ def run(
     # Import here so that --help etc. work without heavy ML deps installed.
     from .sam3_segmenter import Sam3ConceptSegmenter
     seg = Sam3ConceptSegmenter(
-        concepts, score_thresh=score_thresh, mask_thresh=mask_thresh, device=device
+        concepts, score_thresh=score_thresh, mask_thresh=mask_thresh,
+        device=device, fp16=fp16, image_size=image_size,
     )
 
     n_expected = max_frames or (total // frame_stride if total else None)
